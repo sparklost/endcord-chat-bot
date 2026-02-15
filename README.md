@@ -1,5 +1,5 @@
 # endcord-chat-bot
-An extension for [endcord](https://github.com/sparklost/endcord) discord TUI client, that implements LLM-powered chatbot.  
+An extension for [endcord](https://github.com/sparklost/endcord) discord TUI client, that implements LLM-powered chatbot using llama-server.  
 This extension is intended **for bots only**.  
 
 ## Installing

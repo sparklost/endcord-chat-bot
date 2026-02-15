@@ -11,7 +11,7 @@ import time
 EXT_NAME = "LLM Chat Bot"
 EXT_VERSION = "0.1.0"
 EXT_ENDCORD_VERSION = "1.3.0"
-EXT_DESCRIPTION = "An extension that turns discord bot into LLM chatbot through llama-cli"
+EXT_DESCRIPTION = "An extension that turns discord bot into LLM chatbot through llama-server"
 EXT_SOURCE = "https://github.com/sparklost/endcord-chat-bot"
 logger = logging.getLogger(__name__)
 
