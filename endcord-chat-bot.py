@@ -9,8 +9,8 @@ import threading
 import time
 
 EXT_NAME = "LLM Chat Bot"
-EXT_VERSION = "0.1.0"
-EXT_ENDCORD_VERSION = "1.3.0"
+EXT_VERSION = "0.2.0"
+EXT_ENDCORD_VERSION = "1.4.0"
 EXT_DESCRIPTION = "An extension that turns discord bot into LLM chatbot through llama-server"
 EXT_SOURCE = "https://github.com/sparklost/endcord-chat-bot"
 logger = logging.getLogger(__name__)
@@ -159,6 +159,14 @@ class Extension:
             except Exception:
                 self.typing_channel_id = None
                 self.typing_started = None
+
+
+    def on_message_event_is_irrelevant(self, message, optext):
+        """Check if message is relevant or not"""
+        if optext != "MESSAGE_CREATE":
+            return False
+        if message["content"].startswith(self.trigger_start):
+            return True
 
 
     def on_message_event(self, new_message):
