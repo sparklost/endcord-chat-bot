@@ -4,8 +4,10 @@ This extension is intended **for bots only**.
 
 ## Installing
 See [official extensions documentation](https://github.com/sparklost/endcord/blob/main/extensions.md#installing-extensions) for installing instructions.
+Available options:
 - Git clone into `Extensions` directory located in endcord config directory.
-- run `endcord -i https://github.com/sparklost/endcord-chat-bot` (must have `git` installed)
+- Run `endcord -i https://github.com/sparklost/endcord-chat-bot`
+- Or use endcord client-side command `install_extension sparklost/endcord-chat-bot`
 
 
 ## Configuration
