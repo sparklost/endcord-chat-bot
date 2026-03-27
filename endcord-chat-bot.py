@@ -51,6 +51,7 @@ class Extension:
         if not self.app.token.startswith("Bot"):
             logger.info("Not running on user accounts!")
             self.run = False
+            del self.on_message_event
             return
 
         # start server
@@ -171,9 +172,7 @@ class Extension:
 
     def on_message_event(self, new_message):
         """Ran when message event is received"""
-        if not self.run:
-            return
-
+        
         data = new_message["d"]
         if data["channel_id"] not in self.listen_channel and data["guild_id"] not in self.listen_guilds:
             return
