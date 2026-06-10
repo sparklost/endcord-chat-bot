@@ -3,7 +3,7 @@ An extension for [endcord](https://github.com/sparklost/endcord) discord TUI cli
 This extension is intended **for bots only**.  
 
 ## Installing
-See [official extensions documentation](https://github.com/sparklost/endcord/blob/main/extensions.md#installing-extensions) for installing instructions.
+See [official extensions documentation](https://github.com/sparklost/endcord/blob/main/docs/extensions.md#installing-extensions) for installing instructions.
 Available options:
 - Git clone into `Extensions` directory located in endcord config directory.
 - Run `endcord -i https://github.com/sparklost/endcord-chat-bot`
