@@ -11,7 +11,7 @@ Available options:
 
 
 ## Configuration
-All extension options are under `[main]` section in endcord config. This extension options are always prepended with `ext_chat_bot_`.
+All extension options are under `[main]` section in endcord config. This extension options are always prefixed with `ext_chat_bot_`.
 llama-server is needed either to be started by the extension or already running on this or other host.  
 
 ### Settings options
