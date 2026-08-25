@@ -1,17 +1,14 @@
 import http.client
 import json
 import logging
-import os
 import queue
-import shutil
-import subprocess
 import threading
 import time
 
 EXT_NAME = "LLM Chat Bot"
-EXT_VERSION = "0.2.0"
-EXT_ENDCORD_VERSION = "1.4.0"
-EXT_DESCRIPTION = "An extension that turns discord bot into LLM chatbot through llama-server"
+EXT_VERSION = "0.3.0"
+EXT_ENDCORD_VERSION = "1.5.0"
+EXT_DESCRIPTION = "An extension that turns discord bot into LLM chatbot through ollama or llama-server"
 EXT_SOURCE = "https://github.com/sparklost/endcord-chat-bot"
 logger = logging.getLogger(__name__)
 
@@ -23,7 +20,7 @@ class Extension:
 
     def __init__(self, app):
         self.app = app
-        self.trigger_start = app.config.get("ext_chat_bot_trigger_start", "eb;")
+        self.trigger = app.config.get("ext_chat_bot_trigger", "@me")
         send_typing = bool(app.config.get("ext_chat_bot_send_typing", True))
         self.reply = bool(app.config.get("ext_chat_bot_reply", True))
         self.ping = bool(app.config.get("ext_chat_bot_reply_ping", True))
@@ -32,15 +29,15 @@ class Extension:
         self.limit_msg = int(app.config.get("ext_chat_bot_limit_msg_len", 1000))
         self.limit_msg = min(max(self.limit_msg, 10), MAX_MSG_SIZE)
 
-        self.listen_channel = app.config.get("ext_chat_bot_listen_channel", [])
+        self.listen_channels = app.config.get("ext_chat_bot_listen_channels", [])
         self.listen_guilds = app.config.get("ext_chat_bot_listen_guilds", [])
 
-        server_exe = app.config.get("ext_chat_bot_llama_server_executable", "llama-server")
-        model_path = app.config.get("ext_chat_bot_llama_server_model_path", "")
-        system_prompt = app.config.get("ext_chat_bot_llama_server_prompt", "You are a helpful assistant")
-        server_threads = app.config.get("ext_chat_bot_llama_server_threads", None)
+        self.backend = app.config.get("ext_chat_bot_backend", "ollama").lower()
+        self.model = app.config.get("ext_chat_bot_model", "model")
+        self.system_prompt = app.config.get("ext_chat_bot_system_prompt", "You are a helpful assistant")
+        default_port = 11434 if self.backend == "ollama" else 8080
         self.server_host = app.config.get("ext_chat_bot_server_host", "localhost")
-        self.server_port = int(app.config.get("ext_chat_bot_server_port", 42737))
+        self.server_port = int(app.config.get("ext_chat_bot_server_port", default_port))
 
         self.typing_channel_id = None
         self.typing_sent = int(time.time())
@@ -51,46 +48,21 @@ class Extension:
         if not self.app.token.startswith("Bot"):
             logger.info("Not running on user accounts!")
             self.run = False
-            del (type(self).on_message_event, type(self).on_message_event_is_irrelevant)
+            del (type(self).on_message_event, type(self).on_message_event_is_irrelevant, type(self).on_main_start)
             return
 
-        # start server
-        if server_exe:
-            server_exe = os.path.abspath(os.path.expanduser(server_exe))
-        model_path = os.path.abspath(os.path.expanduser(model_path))
-        if server_exe:
-            if not shutil.which(server_exe):
-                logger.error("llama-server executable path is invalid")
-                self.run = False
-                return
-            if not os.path.exists(model_path):
-                logger.error(f"LLM model could not be found at path {server_exe}")
-                self.run = False
-                return
-            dir_path = os.path.dirname(server_exe)
-            cmd = [server_exe, "-m", model_path, "-p", system_prompt, "--port", str(self.server_port), "--predict", str(self.limit_msg)]
-            if server_threads:
-                cmd.append("-t")
-                cmd.append(server_threads)
-            proc = subprocess.Popen(
-                cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                cwd=dir_path,
-            )
-            time.sleep(1)   # let it try to start
-            if proc.poll() is not None:
-                _, stderr = proc.communicate()
-                logger.error(stderr.decode())
-                return
-            logger.info(f"llama-server started on port {self.server_port}")
-        else:
-            logger.info(f"Server not started, assuming its running on {self.server_host}:{self.server_port}")
+        logger.info(f"Connecting to {self.backend} at {self.server_host}:{self.server_port}")
 
         # start helper threads
         if send_typing:
             threading.Thread(target=self.typing_sender, daemon=True).start()
         threading.Thread(target=self.worker, daemon=True).start()
+
+
+    def on_main_start(self):
+        """At this point there is app.my_id so update trigger"""
+        if self.trigger.startswith("@me"):
+            self.trigger = self.trigger[3:] + f"<@{self.app.my_id}>"
 
 
     def typing_sender(self):
@@ -106,11 +78,10 @@ class Extension:
 
 
     def worker(self):
-        """Worker thread that takes message from queue and sends it to llama server then sends response to discord"""
+        """Worker thread that takes message from queue, sends it to the LLM backend, and replies to discord"""
         while self.run:
             try:
                 guild_id, channel_id, message_id, content = self.message_send_queue.get()
-                # send message to llama-server and get response
                 self.typing_channel_id = channel_id
                 self.typing_started = int(time.time())
                 if channel_id not in self.history:
@@ -118,22 +89,49 @@ class Extension:
                 self.history[channel_id].append({"role": "user", "content": content})
                 if len(self.history[channel_id]) > self.limit_history:
                     self.history[channel_id].pop(0)
-                payload = json.dumps({
-                    "model": "model",
-                    "messages": self.history[channel_id],
-                    "stream": False,
-                })
+
+                # prepare payload
+                messages_payload = []
+                if self.system_prompt:
+                    messages_payload.append({"role": "system", "content": self.system_prompt})
+                messages_payload.extend(self.history[channel_id])
+                if self.backend == "ollama":
+                    endpoint = "/api/chat"
+                    payload = json.dumps({
+                        "model": self.model,
+                        "messages": messages_payload,
+                        "options": {
+                            "num_predict": self.limit_msg,
+                        },
+                        "stream": False,
+                    })
+                else:
+                    endpoint = "/v1/chat/completions"
+                    payload = json.dumps({
+                        "model": self.model,
+                        "messages": messages_payload,
+                        "max_tokens": self.limit_msg,
+                        "stream": False,
+                    })
+
+                # get response
                 try:
                     connection = http.client.HTTPConnection(self.server_host, self.server_port)
-                    connection.request("POST", "/v1/chat/completions", body=payload, headers={"Content-Type": "application/json"})
+                    connection.request("POST", endpoint, body=payload, headers={"Content-Type": "application/json"})
                     response = connection.getresponse()
                     data = json.loads(response.read())
-                    reply = data["choices"][0]["message"]["content"]
-                    self.history[channel_id].append({"role": "assistant", "content": reply})
-                    if len(self.history[channel_id]) > self.limit_history:
-                        self.history[channel_id].pop(0)
-                except Exception as e:
+                    if self.backend == "ollama":
+                        reply = data.get("message", {}).get("content", "")
+                    else:
+                        reply = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+                    if reply:
+                        self.history[channel_id].append({"role": "assistant", "content": reply})
+                        if len(self.history[channel_id]) > self.limit_history:
+                            self.history[channel_id].pop(0)
+                    else:
+                        reply = "Error: Received empty response from the server."
                     connection.close()
+                except Exception as e:
                     reply = f"Internal server error! {e}"
 
                 # send message to discord
@@ -152,10 +150,7 @@ class Extension:
                         reply_ping=self.ping,
                     )
                 else:
-                    self.app.discord.send_message(
-                        channel_id,
-                        reply,
-                    )
+                    self.app.discord.send_message(channel_id, reply)
 
             except Exception:
                 self.typing_channel_id = None
@@ -166,21 +161,20 @@ class Extension:
         """Check if message is relevant or not"""
         if optext != "MESSAGE_CREATE":
             return False
-        if message["content"].startswith(self.trigger_start):
+        if message["content"].startswith(self.trigger):
             return True
 
 
     def on_message_event(self, new_message):
         """Ran when message event is received"""
-
         data = new_message["d"]
-        if data["channel_id"] not in self.listen_channel and data["guild_id"] not in self.listen_guilds:
+        if data["channel_id"] not in self.listen_channels and data["guild_id"] not in self.listen_guilds:
             return
 
         if new_message["op"] == "MESSAGE_CREATE" and data["user_id"] != self.app.my_id and data["user_id"] not in self.app.blocked:
-            if not data["content"].startswith(self.trigger_start):
+            if not data["content"].startswith(self.trigger):
                 return
-            content = data["content"][len(self.trigger_start):].strip()
+            content = data["content"][len(self.trigger):].strip()
             if not content:
                 return
 
