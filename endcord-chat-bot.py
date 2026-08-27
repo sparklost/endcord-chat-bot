@@ -6,7 +6,7 @@ import threading
 import time
 
 EXT_NAME = "LLM Chat Bot"
-EXT_VERSION = "0.3.0"
+EXT_VERSION = "0.3.1"
 EXT_ENDCORD_VERSION = "1.5.0"
 EXT_DESCRIPTION = "An extension that turns discord bot into LLM chatbot through ollama or llama-server"
 EXT_SOURCE = "https://github.com/sparklost/endcord-chat-bot"
@@ -20,6 +20,7 @@ class Extension:
 
     def __init__(self, app):
         self.app = app
+
         self.trigger = app.config.get("ext_chat_bot_trigger", "@me")
         send_typing = bool(app.config.get("ext_chat_bot_send_typing", True))
         self.reply = bool(app.config.get("ext_chat_bot_reply", True))
@@ -32,12 +33,15 @@ class Extension:
         self.listen_channels = app.config.get("ext_chat_bot_listen_channels", [])
         self.listen_guilds = app.config.get("ext_chat_bot_listen_guilds", [])
 
-        self.backend = app.config.get("ext_chat_bot_backend", "ollama").lower()
-        self.model = app.config.get("ext_chat_bot_model", "model")
-        self.system_prompt = app.config.get("ext_chat_bot_system_prompt", "You are a helpful assistant")
-        default_port = 11434 if self.backend == "ollama" else 8080
         self.server_host = app.config.get("ext_chat_bot_server_host", "localhost")
-        self.server_port = int(app.config.get("ext_chat_bot_server_port", default_port))
+        self.server_port = int(app.config.get("ext_chat_bot_server_port", 11434))
+        self.openrouter_token = app.config.get("ext_chat_bot_openrouter_token", None)
+
+        self.model = app.config.get("ext_chat_bot_model", None)
+        self.system_prompt = app.config.get("ext_chat_bot_system_prompt", "You are a helpful assistant")
+        self.temp = app.config.get("ext_chat_bot_llm_temp", 0.2)
+        self.top_p = app.config.get("ext_chat_bot_llm_top_p", 0.9)
+        self.repeat_penalty = app.config.get("ext_chat_bot_llm_repeat_penalty", 1.0)
 
         self.typing_channel_id = None
         self.typing_sent = int(time.time())
@@ -77,6 +81,50 @@ class Extension:
                 time.sleep(0.1)
 
 
+    def query_llm(self, messages):
+        """OpenAI-compatible inference for Ollama, llama-server, and OpenRouter"""
+        payload = {
+            "model": self.model,
+            "messages": messages,
+            "max_tokens": self.limit_msg,  # Replaces Ollama's 'num_predict'
+            "temperature": self.temp,
+            "top_p": self.top_p,
+            "repetition_penalty": self.repeat_penalty,
+            "stream": False,
+        }
+        headers = {"Content-Type": "application/json"}
+        if self.openrouter_token:
+            host = "openrouter.ai"
+            port = 443
+            path = "/api/v1/chat/completions"
+            headers["Authorization"] = f"Bearer {self.openrouter_token}"
+            use_https = True
+        else:
+            host = self.server_host
+            port = self.server_port
+            path = "/v1/chat/completions"
+            use_https = False
+
+        try:
+            if use_https:
+                conn = http.client.HTTPSConnection(host, port)
+            else:
+                conn = http.client.HTTPConnection(host, port)
+            conn.request("POST", path, body=json.dumps(payload), headers=headers)
+            res = conn.getresponse()
+            res_body = res.read().decode("utf-8")
+            conn.close()
+            data = json.loads(res_body)
+            if "choices" in data and len(data["choices"]) > 0:
+                reply = data["choices"][0].get("message", {}).get("content", "")
+                return reply if reply else "Error: Received empty string."
+            logger.error(f"Unexpected response structure: {data}")
+            return "Error: Unexpected API response format."
+        except Exception as e:
+            logger.error(f"LLM query failed: {e}")
+            return f"Internal server error! {e}"
+
+
     def worker(self):
         """Worker thread that takes message from queue, sends it to the LLM backend, and replies to discord"""
         while self.run:
@@ -95,44 +143,7 @@ class Extension:
                 if self.system_prompt:
                     messages_payload.append({"role": "system", "content": self.system_prompt})
                 messages_payload.extend(self.history[channel_id])
-                if self.backend == "ollama":
-                    endpoint = "/api/chat"
-                    payload = json.dumps({
-                        "model": self.model,
-                        "messages": messages_payload,
-                        "options": {
-                            "num_predict": self.limit_msg,
-                        },
-                        "stream": False,
-                    })
-                else:
-                    endpoint = "/v1/chat/completions"
-                    payload = json.dumps({
-                        "model": self.model,
-                        "messages": messages_payload,
-                        "max_tokens": self.limit_msg,
-                        "stream": False,
-                    })
-
-                # get response
-                try:
-                    connection = http.client.HTTPConnection(self.server_host, self.server_port)
-                    connection.request("POST", endpoint, body=payload, headers={"Content-Type": "application/json"})
-                    response = connection.getresponse()
-                    data = json.loads(response.read())
-                    if self.backend == "ollama":
-                        reply = data.get("message", {}).get("content", "")
-                    else:
-                        reply = data.get("choices", [{}])[0].get("message", {}).get("content", "")
-                    if reply:
-                        self.history[channel_id].append({"role": "assistant", "content": reply})
-                        if len(self.history[channel_id]) > self.limit_history:
-                            self.history[channel_id].pop(0)
-                    else:
-                        reply = "Error: Received empty response from the server."
-                    connection.close()
-                except Exception as e:
-                    reply = f"Internal server error! {e}"
+                reply = self.query_llm(messages_payload)
 
                 # send message to discord
                 self.typing_channel_id = None

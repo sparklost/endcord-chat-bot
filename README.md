@@ -14,37 +14,46 @@ All extension options are under `[main]` section in endcord config. This extensi
 Either ollama or llama-server is required to be running at configured address.
 
 ### Settings options
-- `ext_chat_bot_trigger_start = "@me"`  
+- `ext_chat_bot_trigger = "@me"`  
     Trigger string for chatbot features. Messages starting with this string will be sent to LLM.  
     `@me` is special token meaning this bot mention at the start of the message.
 - `ext_chat_bot_send_typing = True`  
     Whether to send "typing..." status to current chat.
-- `ext_chat_bot_max_typing = 120`  
-    Longest period of time the bot can be sending "typing..." status. Value is in seconds.
-- `ext_chat_bot_reply = True`  
+- `ext_chat_bot_reply = False`  
     Whether to send response as a reply.
 - `ext_chat_bot_reply_ping = True`  
     Whether to send reply with a ping.
+- `ext_chat_bot_max_typing = 120`  
+    Longest period of time the bot can be sending "typing..." status. Value is in seconds.
 - `ext_chat_bot_limit_history = 20`  
     Limit to the chat history sent to the LLM. History includes user and llm messages.  
     Larger history will slow down reply generation. Histories are stored per-channel.
 - `ext_chat_bot_limit_msg_len = 1000`  
     Limit to the message size in characters. Hard limit is 2000 as that's how much discord allows. Will affect response generation speed.
-- `ext_chat_bot_listen_channel = []`  
+- `ext_chat_bot_listen_channels = []`  
     List of channel IDs where to monitor messages. IDs must be strings (`"12345"`).
 - `ext_chat_bot_listen_guilds = []`  
     List of server IDs where to monitor messages. IDs must be strings (`"12345"`).
     Overrides `ext_notify_mention_listen_channel` if channels are from same server.
-- `ext_chat_bot_backend = "ollama"`  
-    What backend to use, can be: `ollama` and `llama-server`.
-- `ext_chat_bot_model = "model"`  
-    What LLM model to use, it mus be installed in the backend.
-- `ext_chat_bot_system_prompt = "You are a helpful assistant"`  
-    System prompt for LLM.
 - `ext_chat_bot_server_host = "localhost"`  
-    Address at which server is running.
+    Address at which OpenAI-compatible llm server is running.
 - `ext_chat_bot_server_port = 11434`  
-    Port at which server is running.
+    Port at which OpenAI-compatible llm server is running.
+- `ext_chat_bot_openrouter_token = None`  
+    OpenRouter bearer token string. This only overrides model for LLM inference, **NOT for embedding**.  
+    Embedding still has to be configured through ollama.
+- `ext_chat_bot_model = None`  
+    What LLM model to use, it mus be installed in the backend.
+    Must be exact model name from `ollama list`.
+- `ext_chat_bot_system_prompt = SYSTEM_PROMPT`  
+    System prompt for LLM. Default is:
+    "You are a helpful documentation assistant.\n\nInstructions: Answer using ONLY the provided context."
+- `ext_chat_bot_llm_temp = 0.2`  
+    Temperature of LLM response.
+- `ext_chat_bot_llm_top_p = 0.9`
+    Top_p of LLM response.
+- `ext_chat_bot_llm_repeat_penalty = 1.0`  
+    Repeat penalty of LLM response.
 
 ## Disclaimer
 > [!WARNING]
