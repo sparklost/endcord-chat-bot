@@ -2,6 +2,7 @@ import http.client
 import json
 import logging
 import queue
+import re
 import threading
 import time
 
@@ -26,9 +27,10 @@ class Extension:
         self.reply = bool(app.config.get("ext_chat_bot_reply", True))
         self.ping = bool(app.config.get("ext_chat_bot_reply_ping", True))
         self.max_typing = int(app.config.get("ext_chat_bot_max_typing", 120))
-        self.limit_history = int(app.config.get("ext_chat_bot_limit_history", 20))
+        self.limit_history = int(app.config.get("ext_chat_bot_limit_history", 1500))
         self.limit_msg = int(app.config.get("ext_chat_bot_limit_msg_len", 1000))
         self.limit_msg = min(max(self.limit_msg, 10), MAX_MSG_SIZE)
+        self.usernames = app.config.get("ext_chat_bot_usernames", False)
 
         self.listen_channels = app.config.get("ext_chat_bot_listen_channels", [])
         self.listen_guilds = app.config.get("ext_chat_bot_listen_guilds", [])
@@ -129,13 +131,16 @@ class Extension:
         """Worker thread that takes message from queue, sends it to the LLM backend, and replies to discord"""
         while self.run:
             try:
-                guild_id, channel_id, message_id, content = self.message_send_queue.get()
+                guild_id, channel_id, message_id, content, username = self.message_send_queue.get()
                 self.typing_channel_id = channel_id
                 self.typing_started = int(time.time())
                 if channel_id not in self.history:
                     self.history[channel_id] = []
-                self.history[channel_id].append({"role": "user", "content": content})
-                if len(self.history[channel_id]) > self.limit_history:
+                message_entry = {"role": "user", "content": content}
+                if self.usernames:
+                    message_entry["name"] = re.sub(r"[^a-zA-Z0-9_-]", "", username)[:64]
+                self.history[channel_id].append(message_entry)
+                while sum(len(msg["content"]) for msg in self.history[channel_id]) > self.limit_history:
                     self.history[channel_id].pop(0)
 
                 # prepare payload
@@ -144,6 +149,8 @@ class Extension:
                     messages_payload.append({"role": "system", "content": self.system_prompt})
                 messages_payload.extend(self.history[channel_id])
                 reply = self.query_llm(messages_payload)
+                self.history[channel_id].append({"role": "assistant", "content": reply})
+                logger.info(self.history)
 
                 # send message to discord
                 self.typing_channel_id = None
@@ -191,6 +198,12 @@ class Extension:
 
             guild_id = data["guild_id"]
             channel_id = data["channel_id"]
+            if data.get("nick"):
+                name = data["nick"]
+            elif data.get("global_name"):
+                name = data["global_name"]
+            else:
+                name = data["username"]
 
             if logger.getEffectiveLevel() == logging.DEBUG:
                 body = ""
@@ -206,4 +219,4 @@ class Extension:
                 body += f"{data.get("username")} used: {data["content"]}"
                 logger.debug(body)
 
-            self.message_send_queue.put((guild_id, channel_id, data["id"], content))
+            self.message_send_queue.put((guild_id, channel_id, data["id"], content, name))

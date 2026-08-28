@@ -25,11 +25,13 @@ Either ollama or llama-server is required to be running at configured address.
     Whether to send reply with a ping.
 - `ext_chat_bot_max_typing = 120`  
     Longest period of time the bot can be sending "typing..." status. Value is in seconds.
-- `ext_chat_bot_limit_history = 20`  
-    Limit to the chat history sent to the LLM. History includes user and llm messages.  
+- `ext_chat_bot_limit_history = 1500`  
+    Limit to the chat history sent to the LLM to this much **characters**. History includes user and llm messages.  
     Larger history will slow down reply generation. Histories are stored per-channel.
 - `ext_chat_bot_limit_msg_len = 1000`  
     Limit to the message size in characters. Hard limit is 2000 as that's how much discord allows. Will affect response generation speed.
+- `ext_chat_bot_usernames = False`  
+    Whether to send usernames alongside with messages to llm. Some endpoints may not support this.
 - `ext_chat_bot_listen_channels = []`  
     List of channel IDs where to monitor messages. IDs must be strings (`"12345"`).
 - `ext_chat_bot_listen_guilds = []`  
