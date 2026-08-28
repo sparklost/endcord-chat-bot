@@ -39,9 +39,9 @@ class Extension:
 
         self.model = app.config.get("ext_chat_bot_model", None)
         self.system_prompt = app.config.get("ext_chat_bot_system_prompt", "You are a helpful assistant")
-        self.temp = app.config.get("ext_chat_bot_llm_temp", 0.2)
-        self.top_p = app.config.get("ext_chat_bot_llm_top_p", 0.9)
-        self.repeat_penalty = app.config.get("ext_chat_bot_llm_repeat_penalty", 1.0)
+        self.temp = app.config.get("ext_chat_bot_llm_temp", 0.9)
+        self.top_p = app.config.get("ext_chat_bot_llm_top_p", 1.0)
+        self.repeat_penalty = app.config.get("ext_chat_bot_llm_repeat_penalty", 0.2)
 
         self.typing_channel_id = None
         self.typing_sent = int(time.time())

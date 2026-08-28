@@ -48,11 +48,11 @@ Either ollama or llama-server is required to be running at configured address.
 - `ext_chat_bot_system_prompt = SYSTEM_PROMPT`  
     System prompt for LLM. Default is:
     "You are a helpful documentation assistant.\n\nInstructions: Answer using ONLY the provided context."
-- `ext_chat_bot_llm_temp = 0.2`  
+- `ext_chat_bot_llm_temp = 0.9`  
     Temperature of LLM response.
-- `ext_chat_bot_llm_top_p = 0.9`
+- `ext_chat_bot_llm_top_p = 1.0`
     Top_p of LLM response.
-- `ext_chat_bot_llm_repeat_penalty = 1.0`  
+- `ext_chat_bot_llm_repeat_penalty = 0.2`  
     Repeat penalty of LLM response.
 
 ## Disclaimer
