@@ -55,7 +55,7 @@ class Extension:
             del (type(self).on_message_event, type(self).on_message_event_is_irrelevant, type(self).on_main_start)
             return
 
-        logger.info(f"Connecting to {self.backend} at {self.server_host}:{self.server_port}")
+        logger.info(f"Connecting to {self.server_host}:{self.server_port}")
 
         # start helper threads
         if send_typing:
@@ -86,7 +86,7 @@ class Extension:
         payload = {
             "model": self.model,
             "messages": messages,
-            "max_tokens": self.limit_msg,  # Replaces Ollama's 'num_predict'
+            "max_tokens": self.limit_msg,
             "temperature": self.temp,
             "top_p": self.top_p,
             "repetition_penalty": self.repeat_penalty,
