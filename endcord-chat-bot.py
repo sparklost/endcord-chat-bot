@@ -7,7 +7,7 @@ import threading
 import time
 
 EXT_NAME = "LLM Chat Bot"
-EXT_VERSION = "0.3.1"
+EXT_VERSION = "0.4.2"
 EXT_ENDCORD_VERSION = "1.5.0"
 EXT_DESCRIPTION = "An extension that turns discord bot into LLM chatbot through ollama or llama-server"
 EXT_SOURCE = "https://github.com/sparklost/endcord-chat-bot"
