@@ -28,6 +28,8 @@ Either ollama or llama-server is required to be running at configured address.
 - `ext_chat_bot_limit_history = 1500`  
     Limit to the chat history sent to the LLM to this much **characters**. History includes user and llm messages.  
     Larger history will slow down reply generation. Histories are stored per-channel.
+- `ext_chat_bot_history_time = 30`  
+    Messages older than this many **minutes** will be removed from history and LLM context.
 - `ext_chat_bot_limit_msg_len = 1000`  
     Limit to the message size in characters. Hard limit is 2000 as that's how much discord allows. Will affect response generation speed.
 - `ext_chat_bot_usernames = False`  

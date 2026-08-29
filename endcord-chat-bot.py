@@ -28,6 +28,7 @@ class Extension:
         self.ping = bool(app.config.get("ext_chat_bot_reply_ping", True))
         self.max_typing = int(app.config.get("ext_chat_bot_max_typing", 120))
         self.limit_history = int(app.config.get("ext_chat_bot_limit_history", 1500))
+        self.history_time = int(app.config.get("ext_chat_bot_history_time", 30)) * 60
         self.limit_msg = int(app.config.get("ext_chat_bot_limit_msg_len", 1000))
         self.limit_msg = min(max(self.limit_msg, 10), MAX_MSG_SIZE)
         self.usernames = app.config.get("ext_chat_bot_usernames", False)
@@ -131,30 +132,47 @@ class Extension:
         """Worker thread that takes message from queue, sends it to the LLM backend, and replies to discord"""
         while self.run:
             try:
-                guild_id, channel_id, message_id, content, username = self.message_send_queue.get()
+                guild_id, channel_id, message_id, content, username, ref_msg = self.message_send_queue.get()
                 self.typing_channel_id = channel_id
                 self.typing_started = int(time.time())
                 if channel_id not in self.history:
                     self.history[channel_id] = []
-                message_entry = {"role": "user", "content": content}
+                message_entry = {"role": "user", "content": content, "time": int(time.time())}
                 if self.usernames:
                     message_entry["name"] = re.sub(r"[^a-zA-Z0-9_-]", "", username)[:64]
                 self.history[channel_id].append(message_entry)
-                while sum(len(msg["content"]) for msg in self.history[channel_id]) > self.limit_history:
+
+                # clean old messages
+                if self.history_time:
+                    self.history[channel_id] = [msg for msg in self.history[channel_id] if msg["time"] >= (int(time.time()) - self.history_time)]
+
+                # handle reply
+                history = [{"role": msg["role"], "content": msg["content"]} for msg in self.history[channel_id]]
+                if ref_msg:
+                    ref_text = ref_msg["content"]
+                    for i, message in enumerate(history):
+                        if message["role"] == "assistant" and message["content"] == ref_text:
+                            history.pop(i)
+                    reply_payload = {"role": "assitant", "content": f"User is replying to this content that I wrote:\n{ref_text}"}
+                    history.append(reply_payload)
+
+                # limit history
+                while len(self.history[channel_id]) > 1 and sum(len(msg["content"]) for msg in self.history[channel_id]) > self.limit_history:
                     self.history[channel_id].pop(0)
 
                 # prepare payload
                 messages_payload = []
                 if self.system_prompt:
-                    messages_payload.append({"role": "system", "content": self.system_prompt})
-                messages_payload.extend(self.history[channel_id])
+                    messages_payload.insert(0, {"role": "system", "content": self.system_prompt})
+                messages_payload.extend(history)
                 reply = self.query_llm(messages_payload)
-                self.history[channel_id].append({"role": "assistant", "content": reply})
-                logger.info(self.history)
+                self.history[channel_id].append({"role": "assistant", "content": reply, "time": int(time.time())})
 
                 # send message to discord
                 self.typing_channel_id = None
                 self.typing_started = None
+                if reply.lower().startswith("assistant\n\n"):
+                    reply = reply[11:]
                 reply = reply[:self.limit_msg - 1]   # failsafe
                 if not reply:
                     continue
@@ -181,6 +199,9 @@ class Extension:
             return False
         if message["content"].startswith(self.trigger):
             return True
+        ref_msg = message.get("referenced_message")
+        if ref_msg and ref_msg["author"]["id"] == self.app.my_id:
+            return True
 
 
     def on_message_event(self, new_message):
@@ -190,10 +211,13 @@ class Extension:
             return
 
         if new_message["op"] == "MESSAGE_CREATE" and data["user_id"] != self.app.my_id and data["user_id"] not in self.app.blocked:
-            if not data["content"].startswith(self.trigger):
-                return
-            content = data["content"][len(self.trigger):].strip()
-            if not content:
+            ref_msg = data.get("referenced_message")
+            content = data["content"]
+            if ref_msg and ref_msg["user_id"] != self.app.my_id:
+                ref_msg = None
+            if data["content"].startswith(self.trigger):
+                content = content[len(self.trigger):].strip()
+            elif not ref_msg:
                 return
 
             guild_id = data["guild_id"]
@@ -219,4 +243,4 @@ class Extension:
                 body += f"{data.get("username")} used: {data["content"]}"
                 logger.debug(body)
 
-            self.message_send_queue.put((guild_id, channel_id, data["id"], content, name))
+            self.message_send_queue.put((guild_id, channel_id, data["id"], content, name, ref_msg))
